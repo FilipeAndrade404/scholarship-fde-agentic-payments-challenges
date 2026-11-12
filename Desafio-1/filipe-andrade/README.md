@@ -71,6 +71,7 @@ A stack CDK `filipe-andrade-desafio-1` usa `us-east-1`. Ela define as tabelas de
 | Lambda de carga do catálogo | `PutItem` na tabela de produtos. |
 | Lambda do chat | `Query`, `UpdateItem` e `PutItem` transacional na tabela de conversas e `InvokeAgentRuntime` no agente e no endpoint padrão. |
 | Lambda de inicialização de usuário | `PutItem` na tabela de usuários do DynamoDB. |
+| Lambda de publicação do frontend | Lê os dois arquivos ZIP do deploy, sincroniza e remove objetos do bucket do frontend, invalida somente a distribuição do projeto e grava logs no próprio grupo. |
 | AgentCore Runtime | Invocação com streaming do perfil US do Claude Haiku 4.5, invocação da Lambda de pagamentos, leitura do ZIP no S3 e operações do CloudWatch Logs usadas pelo Runtime. Os ARNs do modelo nas regiões do perfil são autorizados somente via esse perfil. |
 
 Cada role pode criar streams e gravar eventos apenas no grupo de logs da sua Lambda. A compra autoriza as operações individuais com a condição `dynamodb:EnclosingOperation`. [IAM para transações do DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/transaction-apis-iam.html)
