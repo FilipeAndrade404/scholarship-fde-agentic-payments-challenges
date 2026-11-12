@@ -36,6 +36,8 @@ O CDK usa o domínio HTTPS da distribuição CloudFront como única origem CORS 
 
 O frontend React é compilado durante o build da infraestrutura. Na implantação, o CDK publica os arquivos em um bucket S3 privado, acessível pelo CloudFront com OAC, gera o `config.json` com a URL da API e os IDs públicos do Cognito e invalida o cache da distribuição. O output `FrontendUrl` informa o endereço do chat.
 
+Para testar o frontend localmente no Microsoft Edge, execute `npm.cmd ci` e `npm.cmd run test:e2e` na pasta `frontend`. Use `npm.cmd run test:e2e -- --headed` para ver o navegador. O Playwright gera o build, inicia a prévia local e simula a sessão e a API. Os cenários cobrem a tela de login sem cadastro público, streaming antes do fim da resposta, recuperação de histórico após recarregar a página e tratamento de interrupção.
+
 Para testar com o DynamoDB Local, execute `npm.cmd ci` e `npm.cmd test` na pasta `api`. A suíte simula o streaming do AgentCore e valida a persistência, o isolamento por usuário, as chamadas simultâneas à mesma conversa e a criação do perfil de pagamentos.
 
 ### Acesso por convite

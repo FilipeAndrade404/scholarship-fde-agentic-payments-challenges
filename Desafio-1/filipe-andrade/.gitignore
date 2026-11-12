@@ -9,3 +9,4 @@ cdk.out/
 *.tfstate.*
 __pycache__/
 .venv/
+test-results/
