@@ -1,0 +1,23 @@
+{
+  "name": "filipe-andrade-infra",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc --noEmit && npm --prefix ../tools run build && esbuild ../tools/src/handler.ts --bundle --platform=node --target=node24 --outfile=dist/payment-tools/index.js",
+    "synth": "npm run build && cdk synth",
+    "deploy": "npm run build && cdk deploy"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.276.0",
+    "constructs": "^10.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "aws-cdk": "^2.1148.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
