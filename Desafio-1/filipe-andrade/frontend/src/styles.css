@@ -1,0 +1,27 @@
+body {
+  margin: 0;
+  background: #f5f7fa;
+  color: #152637;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+main, [data-amplify-authenticator] {
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.chat { max-width: 52rem; }
+header, nav { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+header { justify-content: space-between; }
+h1 { font-size: clamp(1.3rem, 4vw, 2rem); }
+
+.messages { display: grid; gap: 1rem; margin: 1rem 0; }
+article { background: white; border-radius: .75rem; padding: 1rem; overflow-wrap: anywhere; }
+article.user { background: #e1edfc; margin-inline-start: 1rem; white-space: pre-wrap; }
+article p:last-child { margin-bottom: 0; }
+form { display: grid; gap: .5rem; margin-top: 1rem; }
+textarea { resize: vertical; padding: .6rem; font: inherit; }
+.chat button { padding: .5rem .8rem; border: 1px solid #23476a; border-radius: .4rem; background: white; color: #153a60; }
+.chat button[type="submit"] { justify-self: end; background: #153a60; color: white; }
+.chat button:disabled { opacity: .55; }
+pre { overflow: auto; }

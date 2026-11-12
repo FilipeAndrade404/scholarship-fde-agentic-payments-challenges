@@ -1,0 +1,20 @@
+{
+  "name": "frontend",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@aws-amplify/ui-react": "6.15.7",
+    "aws-amplify": "6.22.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-markdown": "10.1.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.8"
+  }
+}
