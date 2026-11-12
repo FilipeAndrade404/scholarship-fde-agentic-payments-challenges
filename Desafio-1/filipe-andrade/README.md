@@ -32,7 +32,9 @@ O API Gateway Regional usa integração proxy em modo `STREAM`. A HTTP API suger
 
 A tabela indicada por `CONVERSATIONS_TABLE` tem `conversa_id` como chave de partição e `ordem` como chave de ordenação numérica. O identificador da conversa deriva do `sub` e do UUID da sessão. O item de ordem zero controla a reserva do turno. Cada item posterior guarda a mensagem do usuário, o texto da resposta e as mensagens internas usadas no histórico do agente.
 
-O CORS usa uma única origem HTTPS do CloudFront nas respostas da Lambda, no preflight e nas respostas de erro do API Gateway. Nesta etapa, o CDK recebe a origem pelo parâmetro `FrontendOrigin`. A etapa do frontend vai ligar esse valor diretamente à distribuição.
+O CDK usa o domínio HTTPS da distribuição CloudFront como única origem CORS nas respostas da Lambda, no preflight e nas respostas de erro do API Gateway.
+
+O frontend React é compilado durante o build da infraestrutura. Na implantação, o CDK publica os arquivos em um bucket S3 privado, acessível pelo CloudFront com OAC, gera o `config.json` com a URL da API e os IDs públicos do Cognito e invalida o cache da distribuição. O output `FrontendUrl` informa o endereço do chat.
 
 Para testar com o DynamoDB Local, execute `npm.cmd ci` e `npm.cmd test` na pasta `api`. A suíte simula o streaming do AgentCore e valida a persistência, o isolamento por usuário, as chamadas simultâneas à mesma conversa e a criação do perfil de pagamentos.
 

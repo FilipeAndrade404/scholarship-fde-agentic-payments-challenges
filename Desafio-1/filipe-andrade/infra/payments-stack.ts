@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { ArnFormat, CfnOutput, CfnParameter, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib'
+import { ArnFormat, CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib'
 import type { CfnRuntime } from 'aws-cdk-lib/aws-bedrockagentcore'
 import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb'
 import { Policy, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam'
@@ -11,6 +11,7 @@ import { chatTimeoutSeconds } from '../api/src/chat-config.ts'
 import { initialCatalog } from '../tools/src/catalog.ts'
 import { addAgentRuntime } from './agent-runtime.ts'
 import { addChatAccess } from './chat-access.ts'
+import { addFrontendHosting, publishFrontend } from './frontend-hosting.ts'
 
 export class PaymentsStack extends Stack {
   constructor(scope: Construct, id: string, props: StackProps) {
@@ -69,12 +70,9 @@ export class PaymentsStack extends Stack {
     const agent = addAgentRuntime(this, tools)
     const chat = this.chatFunction(agent)
     const initializeUser = this.initializeUserFunction(users)
-    const frontendOrigin = new CfnParameter(this, 'FrontendOrigin', {
-      type: 'String',
-      description: 'Origem HTTPS da distribuição do frontend no CloudFront',
-      allowedPattern: '^https://[a-z0-9-]+\\.cloudfront\\.net$',
-    })
-    addChatAccess(this, chat, initializeUser, frontendOrigin.valueAsString)
+    const frontend = addFrontendHosting(this)
+    const config = addChatAccess(this, chat, initializeUser, frontend.url)
+    publishFrontend(this, frontend, config)
 
     new CfnOutput(this, 'AgentRuntimeArn', { value: agent.attrAgentRuntimeArn })
     new CfnOutput(this, 'ChatFunctionArn', { value: chat.functionArn })

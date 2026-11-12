@@ -82,4 +82,5 @@ export function addChatAccess(stack: Stack, chat: Function, initializeUser: Func
   new CfnOutput(stack, 'ChatApiUrl', { value: api.url })
   new CfnOutput(stack, 'CognitoUserPoolId', { value: userPool.userPoolId })
   new CfnOutput(stack, 'CognitoUserPoolClientId', { value: client.userPoolClientId })
+  return { apiUrl: api.url, userPoolId: userPool.userPoolId, userPoolClientId: client.userPoolClientId }
 }
