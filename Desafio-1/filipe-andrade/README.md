@@ -2,6 +2,23 @@
 
 O código da Fase 1 é a referência para o catálogo, o fluxo de compra e os contratos das ferramentas. [Projeto original](https://github.com/RickyM7/Ollama-Chat-MCP-Payments/tree/3d09a7005722e30956f2799e1f3f10d89246ebf4)
 
+## Agente Strands
+
+O entrypoint em `agent/app.py` usa o SDK do AgentCore. O Runtime deverá receber `BEDROCK_MODEL_ID` e `PAYMENT_TOOLS_ARN` pelo CDK. A integração com o Bedrock usa o endpoint de `us-east-1`.
+
+A Lambda do chat enviará a `mensagem` do usuário, o `historico` completo obtido do banco e o `contexto` autenticado com `usuario_id` e `sessao_id`. O agente usa esse contexto ao invocar a Lambda de ferramentas. Os parâmetros apresentados ao modelo contêm apenas os argumentos da ferramenta.
+
+O agente responde por SSE com eventos `texto`, `erro` e `fim`. O evento `fim` carrega as mensagens do turno, incluindo as chamadas e os retornos das ferramentas. O backend deverá persistir essas mensagens e enviar ao navegador apenas o texto, as mensagens de erro e um aviso de conclusão.
+
+Na pasta `agent`, instale as dependências com Python 3.13 e uv e execute os testes locais:
+
+```powershell
+uv sync --locked
+uv run --locked python -m unittest discover -s tests -v
+```
+
+Os testes usam o SDK do Strands com respostas simuladas do modelo e da Lambda.
+
 ## Ferramentas de pagamento
 
 A função `handler` em `tools/src/handler.ts` encaminha as chamadas para `listar_catalogo`, `registrar_intencao` e `realizar_compra`. O evento interno contém `ferramenta`, `contexto` e `argumentos`. O contexto carrega `usuario_id` e `sessao_id` obtidos pela Lambda do chat. A integração da API deverá validar a sessão e obter o usuário da claim `sub` do Cognito antes de invocar o agente. O agente repassa esse contexto por código ao invocar a função.
