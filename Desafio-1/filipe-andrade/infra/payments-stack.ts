@@ -7,6 +7,7 @@ import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs'
 import { AwsCustomResource, PhysicalResourceId } from 'aws-cdk-lib/custom-resources'
 import type { Construct } from 'constructs'
 import { initialCatalog } from '../tools/src/catalog.ts'
+import { addAgentRuntime } from './agent-runtime.ts'
 
 export class PaymentsStack extends Stack {
   constructor(scope: Construct, id: string, props: StackProps) {
@@ -62,7 +63,9 @@ export class PaymentsStack extends Stack {
     })
 
     this.seedCatalog(products)
+    const agent = addAgentRuntime(this, tools)
 
+    new CfnOutput(this, 'AgentRuntimeArn', { value: agent.attrAgentRuntimeArn })
     new CfnOutput(this, 'PaymentToolsArn', { value: tools.functionArn })
     new CfnOutput(this, 'UsersTableName', { value: users.tableName })
   }
