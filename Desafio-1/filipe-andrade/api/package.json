@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test test/chat.test.mjs"
+    "test": "npm run build && node --test"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.1167.0",
