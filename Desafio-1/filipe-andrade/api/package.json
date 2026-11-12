@@ -1,0 +1,21 @@
+{
+  "name": "filipe-andrade-chat-api",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test test/chat.test.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.1167.0",
+    "@aws-sdk/client-dynamodb": "^3.1167.0",
+    "@aws-sdk/lib-dynamodb": "^3.1167.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  }
+}
