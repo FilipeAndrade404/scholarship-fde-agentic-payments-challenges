@@ -5,7 +5,10 @@ import { PolicyDocument, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk
 import type { IFunction } from 'aws-cdk-lib/aws-lambda'
 import { Asset } from 'aws-cdk-lib/aws-s3-assets'
 
-const modelId = 'amazon.nova-lite-v1:0'
+const modelId = 'anthropic.claude-haiku-4-5-20251001-v1:0'
+const inferenceProfileId = `us.${modelId}`
+// Destinos do perfil US do Haiku 4.5 para requisições originadas em us-east-1.
+const inferenceRegions = ['us-east-1', 'us-east-2', 'us-west-2']
 
 export function addAgentRuntime(stack: Stack, paymentTools: IFunction) {
   const name = `${stack.stackName.replaceAll('-', '_')}_agent`
@@ -25,6 +28,12 @@ export function addAgentRuntime(stack: Stack, paymentTools: IFunction) {
     resourceName: suffix,
     arnFormat: ArnFormat.COLON_RESOURCE_NAME,
   })
+  const inferenceProfileArn = stack.formatArn({
+    service: 'bedrock',
+    resource: 'inference-profile',
+    resourceName: inferenceProfileId,
+    arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
+  })
   const role = new Role(stack, 'AgentRuntimeRole', {
     assumedBy: new ServicePrincipal('bedrock-agentcore.amazonaws.com', {
       conditions: {
@@ -41,13 +50,19 @@ export function addAgentRuntime(stack: Stack, paymentTools: IFunction) {
           }),
           new PolicyStatement({
             actions: ['bedrock:InvokeModelWithResponseStream'],
-            resources: [stack.formatArn({
+            resources: [inferenceProfileArn],
+          }),
+          new PolicyStatement({
+            actions: ['bedrock:InvokeModelWithResponseStream'],
+            resources: inferenceRegions.map(region => stack.formatArn({
               service: 'bedrock',
+              region,
               account: '',
               resource: 'foundation-model',
               resourceName: modelId,
               arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
-            })],
+            })),
+            conditions: { StringEquals: { 'bedrock:InferenceProfileArn': inferenceProfileArn } },
           }),
           new PolicyStatement({
             actions: ['lambda:InvokeFunction'],
@@ -84,7 +99,7 @@ export function addAgentRuntime(stack: Stack, paymentTools: IFunction) {
       },
     },
     environmentVariables: {
-      BEDROCK_MODEL_ID: modelId,
+      BEDROCK_MODEL_ID: inferenceProfileId,
       PAYMENT_TOOLS_ARN: paymentTools.functionArn,
     },
   })
