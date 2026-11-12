@@ -69,7 +69,7 @@ export function addAgentRuntime(stack: Stack, paymentTools: IFunction) {
             resources: [paymentTools.functionArn],
           }),
           new PolicyStatement({
-            actions: ['logs:CreateLogGroup', 'logs:DescribeLogStreams', 'logs:PutResourcePolicy'],
+            actions: ['logs:CreateLogGroup', 'logs:DescribeLogStreams'],
             resources: [logsArn(`${logGroupPrefix}${name}-*`)],
           }),
           new PolicyStatement({
@@ -78,7 +78,9 @@ export function addAgentRuntime(stack: Stack, paymentTools: IFunction) {
           }),
           new PolicyStatement({
             actions: ['logs:DescribeLogGroups'],
-            resources: [logsArn('*')],
+            // CloudWatch Logs does not support resource-level authorization for this action.
+            resources: ['*'],
+            conditions: { StringEquals: { 'aws:RequestedRegion': stack.region } },
           }),
         ],
       }),

@@ -74,6 +74,8 @@ A stack CDK `filipe-andrade-desafio-1` usa `us-east-1`. Ela define as tabelas de
 | Lambda de publicação do frontend | Lê os dois arquivos ZIP do deploy, sincroniza e remove objetos do bucket do frontend, invalida somente a distribuição do projeto e grava logs no próprio grupo. |
 | AgentCore Runtime | Invocação com streaming do perfil US do Claude Haiku 4.5, invocação da Lambda de pagamentos, leitura do ZIP no S3 e operações do CloudWatch Logs usadas pelo Runtime. Os ARNs do modelo nas regiões do perfil são autorizados somente via esse perfil. |
 
+A role do AgentCore restringe a criação de grupos e a escrita de logs ao prefixo do agente. `logs:DescribeLogGroups` é uma exceção de listagem, limitada a `us-east-1`: a ação não aceita ARN de grupo como recurso IAM. A role não recebe `logs:PutResourcePolicy`, pois o projeto não configura a entrega de traces do X-Ray no grupo do agente. [Ações do CloudWatch Logs](https://docs.aws.amazon.com/service-authorization/latest/reference/list_logs.html) · [Observabilidade do AgentCore](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-configure.html)
+
 Cada role pode criar streams e gravar eventos apenas no grupo de logs da sua Lambda. A compra autoriza as operações individuais com a condição `dynamodb:EnclosingOperation`. [IAM para transações do DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/transaction-apis-iam.html)
 
 Com as dependências instaladas por `npm.cmd ci` em `api`, `tools` e `infra` e com Python 3.13 e uv disponíveis, rode `npm.cmd run synth` em `infra`. O comando compila o código, empacota as Lambdas e o agente e gera o template em `infra/cdk.out`.
