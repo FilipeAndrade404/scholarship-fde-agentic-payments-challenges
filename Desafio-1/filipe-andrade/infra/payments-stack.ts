@@ -1,11 +1,13 @@
 import { fileURLToPath } from 'node:url'
 import { ArnFormat, CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib'
+import type { CfnRuntime } from 'aws-cdk-lib/aws-bedrockagentcore'
 import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb'
 import { Policy, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam'
 import { Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda'
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs'
 import { AwsCustomResource, PhysicalResourceId } from 'aws-cdk-lib/custom-resources'
 import type { Construct } from 'constructs'
+import { chatTimeoutSeconds } from '../api/src/chat-config.ts'
 import { initialCatalog } from '../tools/src/catalog.ts'
 import { addAgentRuntime } from './agent-runtime.ts'
 
@@ -64,10 +66,52 @@ export class PaymentsStack extends Stack {
 
     this.seedCatalog(products)
     const agent = addAgentRuntime(this, tools)
+    const chat = this.chatFunction(agent)
 
     new CfnOutput(this, 'AgentRuntimeArn', { value: agent.attrAgentRuntimeArn })
+    new CfnOutput(this, 'ChatFunctionArn', { value: chat.functionArn })
     new CfnOutput(this, 'PaymentToolsArn', { value: tools.functionArn })
     new CfnOutput(this, 'UsersTableName', { value: users.tableName })
+  }
+
+  private chatFunction(agent: CfnRuntime) {
+    const conversations = new Table(this, 'Conversations', {
+      tableName: `${this.stackName}-conversas`,
+      partitionKey: { name: 'conversa_id', type: AttributeType.STRING },
+      sortKey: { name: 'ordem', type: AttributeType.NUMBER },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY,
+    })
+    const name = `${this.stackName}-chat`
+    const logs = this.functionLogs('ChatLogs', name)
+    const role = this.functionRole('ChatRole', logs)
+    role.addToPolicy(new PolicyStatement({
+      actions: ['dynamodb:Query', 'dynamodb:UpdateItem'],
+      resources: [conversations.tableArn],
+    }))
+    role.addToPolicy(new PolicyStatement({
+      actions: ['dynamodb:PutItem'],
+      resources: [conversations.tableArn],
+      conditions: { StringEquals: { 'dynamodb:EnclosingOperation': 'TransactWriteItems' } },
+    }))
+    role.addToPolicy(new PolicyStatement({
+      actions: ['bedrock-agentcore:InvokeAgentRuntime'],
+      resources: [agent.attrAgentRuntimeArn, `${agent.attrAgentRuntimeArn}/runtime-endpoint/DEFAULT`],
+    }))
+    return new Function(this, 'ChatFunction', {
+      functionName: name,
+      code: Code.fromAsset(fileURLToPath(new URL('./dist/chat', import.meta.url))),
+      runtime: Runtime.NODEJS_24_X,
+      handler: 'index.handler',
+      role,
+      logGroup: logs,
+      timeout: Duration.seconds(chatTimeoutSeconds),
+      memorySize: 256,
+      environment: {
+        CONVERSATIONS_TABLE: conversations.tableName,
+        AGENT_RUNTIME_ARN: agent.attrAgentRuntimeArn,
+      },
+    })
   }
 
   private paymentTable(id: string, suffix: string, key: string) {
