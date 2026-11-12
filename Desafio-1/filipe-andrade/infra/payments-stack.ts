@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { ArnFormat, CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib'
+import { ArnFormat, CfnOutput, CfnParameter, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib'
 import type { CfnRuntime } from 'aws-cdk-lib/aws-bedrockagentcore'
 import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb'
 import { Policy, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam'
@@ -10,6 +10,7 @@ import type { Construct } from 'constructs'
 import { chatTimeoutSeconds } from '../api/src/chat-config.ts'
 import { initialCatalog } from '../tools/src/catalog.ts'
 import { addAgentRuntime } from './agent-runtime.ts'
+import { addChatAccess } from './chat-access.ts'
 
 export class PaymentsStack extends Stack {
   constructor(scope: Construct, id: string, props: StackProps) {
@@ -67,11 +68,39 @@ export class PaymentsStack extends Stack {
     this.seedCatalog(products)
     const agent = addAgentRuntime(this, tools)
     const chat = this.chatFunction(agent)
+    const initializeUser = this.initializeUserFunction(users)
+    const frontendOrigin = new CfnParameter(this, 'FrontendOrigin', {
+      type: 'String',
+      description: 'Origem HTTPS da distribuição do frontend no CloudFront',
+      allowedPattern: '^https://[a-z0-9-]+\\.cloudfront\\.net$',
+    })
+    addChatAccess(this, chat, initializeUser, frontendOrigin.valueAsString)
 
     new CfnOutput(this, 'AgentRuntimeArn', { value: agent.attrAgentRuntimeArn })
     new CfnOutput(this, 'ChatFunctionArn', { value: chat.functionArn })
     new CfnOutput(this, 'PaymentToolsArn', { value: tools.functionArn })
     new CfnOutput(this, 'UsersTableName', { value: users.tableName })
+  }
+
+  private initializeUserFunction(users: Table) {
+    const name = `${this.stackName}-inicializa-usuario`
+    const logs = this.functionLogs('InitializeUserLogs', name)
+    const role = this.functionRole('InitializeUserRole', logs)
+    role.addToPolicy(new PolicyStatement({
+      actions: ['dynamodb:PutItem'],
+      resources: [users.tableArn],
+    }))
+    return new Function(this, 'InitializeUser', {
+      functionName: name,
+      code: Code.fromAsset(fileURLToPath(new URL('./dist/initialize-user', import.meta.url))),
+      runtime: Runtime.NODEJS_24_X,
+      handler: 'index.handler',
+      role,
+      logGroup: logs,
+      timeout: Duration.seconds(5),
+      memorySize: 256,
+      environment: { USERS_TABLE: users.tableName, INITIAL_LIMIT_CENTS: '50000' },
+    })
   }
 
   private chatFunction(agent: CfnRuntime) {

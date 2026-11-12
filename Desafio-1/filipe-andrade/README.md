@@ -23,7 +23,7 @@ Os testes usam o SDK do Strands com respostas simuladas do modelo e da Lambda.
 
 ## Lambda do chat
 
-O handler em `api/src/handler.ts` foi preparado para a integração proxy com streaming do API Gateway REST. Ele obtém `usuario_id` de `requestContext.authorizer.claims.sub`. O Cognito e o autorizador do API Gateway serão definidos na etapa de integração.
+O API Gateway Regional usa integração proxy em modo `STREAM`. A HTTP API sugerida pelo enunciado não oferece streaming nativo de resposta, que é um requisito do desafio. O autorizador do Cognito verifica o ID token enviado em `Authorization: Bearer <token>`, incluindo a audiência do app client. A Lambda obtém `usuario_id` de `requestContext.authorizer.claims.sub`. [Streaming no API Gateway REST](https://docs.aws.amazon.com/apigateway/latest/developerguide/response-transfer-mode.html)
 
 | Operação | Contrato |
 | --- | --- |
@@ -32,7 +32,13 @@ O handler em `api/src/handler.ts` foi preparado para a integração proxy com st
 
 A tabela indicada por `CONVERSATIONS_TABLE` tem `conversa_id` como chave de partição e `ordem` como chave de ordenação numérica. O identificador da conversa deriva do `sub` e do UUID da sessão. O item de ordem zero controla a reserva do turno. Cada item posterior guarda a mensagem do usuário, o texto da resposta e as mensagens internas usadas no histórico do agente.
 
-Para testar com o DynamoDB Local, execute `npm.cmd ci` e `npm.cmd test` na pasta `api`. A suíte simula o streaming do AgentCore e valida a persistência, o isolamento por usuário e as chamadas simultâneas à mesma conversa.
+O CORS usa uma única origem HTTPS do CloudFront nas respostas da Lambda, no preflight e nas respostas de erro do API Gateway. Nesta etapa, o CDK recebe a origem pelo parâmetro `FrontendOrigin`. A etapa do frontend vai ligar esse valor diretamente à distribuição.
+
+Para testar com o DynamoDB Local, execute `npm.cmd ci` e `npm.cmd test` na pasta `api`. A suíte simula o streaming do AgentCore e valida a persistência, o isolamento por usuário, as chamadas simultâneas à mesma conversa e a criação do perfil de pagamentos.
+
+### Acesso por convite
+
+O User Pool do Cognito permite cadastro por administrador. O convite por e-mail leva uma senha temporária que o usuário troca no primeiro acesso. O app client público usa SRP. A função disparada antes da emissão de tokens associa o `sub` do usuário à tabela de pagamentos e concede R$ 500 de limite simulado inicial. A escrita condicional preserva o saldo dos usuários existentes em logins e renovações.
 
 ## Ferramentas de pagamento
 
@@ -49,7 +55,7 @@ A intenção dura 10 minutos e registra o preço calculado pelo backend. Uma com
 | `INTENTS_TABLE` | `intencao_id` | Usuário, sessão, produto, quantidade, valor em centavos, validade e status |
 | `TRANSACTIONS_TABLE` | `transacao_id` | Compra simulada aprovada, associada à intenção e ao usuário |
 
-O CDK carrega os itens de `tools/src/catalog.ts` com inserções condicionais. Uma nova implantação preserva o estoque dos produtos existentes. O cadastro de usuários convidados deverá associar um limite inicial ao `sub` do Cognito.
+O CDK carrega os itens de `tools/src/catalog.ts` com inserções condicionais. Uma nova implantação preserva o estoque dos produtos existentes.
 
 ## Infraestrutura de pagamentos
 
@@ -60,6 +66,7 @@ A stack CDK `filipe-andrade-desafio-1` usa `us-east-1`. Ela define as tabelas de
 | Lambda de ferramentas | `Scan` no catálogo, `GetItem` em produtos, usuários e intenções e `PutItem` em intenções. Na transação de compra, `UpdateItem` em produtos, usuários e intenções e `PutItem` em transações. |
 | Lambda de carga do catálogo | `PutItem` na tabela de produtos. |
 | Lambda do chat | `Query`, `UpdateItem` e `PutItem` transacional na tabela de conversas e `InvokeAgentRuntime` no agente e no endpoint padrão. |
+| Lambda de inicialização de usuário | `PutItem` na tabela de usuários do DynamoDB. |
 | AgentCore Runtime | Invocação com streaming do perfil US do Claude Haiku 4.5, invocação da Lambda de pagamentos, leitura do ZIP no S3 e operações do CloudWatch Logs usadas pelo Runtime. Os ARNs do modelo nas regiões do perfil são autorizados somente via esse perfil. |
 
 Cada role pode criar streams e gravar eventos apenas no grupo de logs da sua Lambda. A compra autoriza as operações individuais com a condição `dynamodb:EnclosingOperation`. [IAM para transações do DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/transaction-apis-iam.html)

@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && npm run build:tools && npm run build:agent && npm run build:chat",
     "build:tools": "npm --prefix ../tools run build && esbuild ../tools/src/handler.ts --bundle --platform=node --target=node24 --outfile=dist/payment-tools/index.js",
     "build:agent": "uv run --no-project --python 3.13 python ../agent/build.py",
-    "build:chat": "npm --prefix ../api run build && esbuild ../api/src/handler.ts --bundle --platform=node --target=node24 --outfile=dist/chat/index.js",
+    "build:chat": "npm --prefix ../api run build && esbuild ../api/src/handler.ts --bundle --platform=node --target=node24 --outfile=dist/chat/index.js && esbuild ../api/src/cognito.ts --bundle --platform=node --target=node24 --outfile=dist/initialize-user/index.js",
     "synth": "npm run build && cdk synth",
     "deploy": "npm run build && cdk deploy"
   },
