@@ -76,12 +76,6 @@ export function addAgentRuntime(stack: Stack, paymentTools: IFunction) {
             actions: ['logs:CreateLogStream', 'logs:PutLogEvents'],
             resources: [logsArn(`${logGroupPrefix}${name}-*:log-stream:*`)],
           }),
-          new PolicyStatement({
-            actions: ['logs:DescribeLogGroups'],
-            // CloudWatch Logs does not support resource-level authorization for this action.
-            resources: ['*'],
-            conditions: { StringEquals: { 'aws:RequestedRegion': stack.region } },
-          }),
         ],
       }),
     },
