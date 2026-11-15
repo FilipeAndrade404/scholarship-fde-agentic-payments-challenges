@@ -87,6 +87,8 @@ export function addAgentRuntime(stack: Stack, paymentTools: IFunction) {
     roleArn: role.roleArn,
     protocolConfiguration: 'HTTP',
     networkConfiguration: { networkMode: 'PUBLIC' },
+    // Sessões ociosas encerram em 5 minutos; o histórico fica no DynamoDB.
+    lifecycleConfiguration: { idleRuntimeSessionTimeout: 300, maxLifetime: 3600 },
     agentRuntimeArtifact: {
       codeConfiguration: {
         runtime: 'PYTHON_3_13',
