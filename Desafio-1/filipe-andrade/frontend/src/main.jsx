@@ -6,8 +6,31 @@ import { I18n } from 'aws-amplify/utils'
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { chatRequest, readChatStream } from './api.js'
 import './styles.css'
+
+function Brand({ className = '' }) {
+  return <span className={`brand ${className}`.trim()} role="img" aria-label="AI/R">
+    <span aria-hidden="true">AI</span>
+    <svg className="brand-link" viewBox="0 0 20 28" aria-hidden="true">
+      <line x1="4" y1="23" x2="16" y2="5" />
+      <circle cx="4" cy="23" r="3" />
+      <circle cx="16" cy="5" r="3" />
+    </svg>
+    <span aria-hidden="true">R</span>
+  </span>
+}
+
+const authComponents = {
+  Header() {
+    return <div className="login-brand">
+      <Brand />
+      <p className="login-tagline">Agentic AI Engineering</p>
+      <p className="login-subtitle">Assistente de pagamentos · acesso por convite</p>
+    </div>
+  },
+}
 
 const errorText = error => error instanceof TypeError
   ? 'Falha de conexão com o chat. Verifique sua rede.'
@@ -102,7 +125,10 @@ function Chat({ apiUrl, user, signOut }) {
 
   return <main className="chat">
     <header>
-      <h1>Assistente de pagamentos</h1>
+      <div className="chat-title">
+        <Brand className="brand-sm" />
+        <h1>Assistente de pagamentos</h1>
+      </div>
       <nav aria-label="Conversa">
         <button onClick={newConversation} disabled={busy}>Nova conversa</button>
         <button onClick={signOut}>Sair</button>
@@ -112,7 +138,7 @@ function Chat({ apiUrl, user, signOut }) {
       {!messages.length && <p>Consulte o catálogo, seu limite ou acompanhe uma compra.</p>}
       {messages.map(({ role, content }, index) => <article key={index} className={role}>
         <strong>{role === 'user' ? 'Você' : 'Assistente'}</strong>
-        {role === 'assistant' ? <Markdown skipHtml>{content}</Markdown> : <p>{content}</p>}
+        {role === 'assistant' ? <Markdown skipHtml remarkPlugins={[remarkGfm]}>{content}</Markdown> : <p>{content}</p>}
       </article>)}
     </section>
     {busy && <p role="status">Aguarde…</p>}
@@ -138,7 +164,7 @@ async function start() {
   Amplify.configure({ Auth: { Cognito: { userPoolId, userPoolClientId, loginWith: { email: true } } } })
   I18n.putVocabularies(translations)
   I18n.setLanguage('pt')
-  root.render(<Authenticator hideSignUp loginMechanisms={['email']}>
+  root.render(<Authenticator hideSignUp loginMechanisms={['email']} components={authComponents}>
     {({ user, signOut }) => user && <Chat key={user.userId} apiUrl={apiUrl} user={user} signOut={signOut} />}
   </Authenticator>)
 }
