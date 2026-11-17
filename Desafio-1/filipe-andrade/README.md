@@ -13,8 +13,36 @@ Desafio 1 da Sprint 2 (Pagamentos Agênticos). O chatbot da Fase 1 ([projeto ori
 | Deploy do backend | `npm run deploy` dentro de `infra/` |
 | Frontend | Local, `npm run dev` dentro de `frontend/` → `http://localhost:5173` |
 
+## Para o corretor
+
+A API, o Cognito e o agente estão publicados na AWS e permanecem no ar até a correção. Como o frontend roda localmente, siga estes passos (requer Node.js 24):
+
+1. Aceite o convite enviado pelo Cognito ao seu e-mail (assunto **"Convite para o chat de pagamentos"**, com o usuário e uma senha temporária).
+2. Clone a branch `fellow/filipe-andrade-desafio-1` e crie o arquivo `Desafio-1/filipe-andrade/frontend/public/config.json` com o conteúdo abaixo. São identificadores públicos do app client (sem segredo); o acesso continua restrito a usuários convidados.
+
+   ```json
+   {
+     "apiUrl": "https://rysstunhpg.execute-api.us-east-1.amazonaws.com/prod/",
+     "userPoolId": "us-east-1_m9N3HCDlI",
+     "userPoolClientId": "1jotq0pssp2ffstouuhekgjtsu"
+   }
+   ```
+
+3. Inicie o frontend:
+
+   ```powershell
+   cd Desafio-1/filipe-andrade/frontend
+   npm ci
+   npm run dev
+   ```
+
+4. Abra **exatamente** `http://localhost:5173` (é a única origem aceita pelo CORS da API), entre com o e-mail e a senha temporária e defina uma nova senha. Cada usuário começa com limite simulado de R$ 500.
+
+O passo a passo completo, com solução de problemas, está na seção [2.6](#26-rodar-o-frontend-localmente).
+
 ## Sumário
 
+0. [Para o corretor](#para-o-corretor)
 1. [Arquitetura implementada](#1-arquitetura-implementada)
 2. [Deploy passo a passo](#2-deploy-passo-a-passo)
 3. [Modelo do Bedrock](#3-modelo-do-bedrock)
@@ -295,35 +323,54 @@ A role `cdk-hnb659fds-cfn-exec-role`, criada pelo bootstrap do CDK, é usada pel
 
 ## 6. Evidências
 
-> Pendente: as capturas serão adicionadas após o deploy. Os arquivos ficarão em `docs/evidencias/`.
+Capturas feitas com o backend publicado na AWS (stack `filipe-andrade-desafio-1`, `us-east-1`) e o frontend local em `http://localhost:5173`. Cada cenário de compra foi feito em uma conversa nova, com um usuário convidado e limite inicial de R$ 500.
 
-| # | Cenário | Como reproduzir | Resultado esperado | Captura |
-| --- | --- | --- | --- | --- |
-| 1 | Login | Abrir `http://localhost:5173` (passo 2.6) e entrar com um usuário convidado | Tela de login sem opção de cadastro; chat acessível após o login | `docs/evidencias/01-login.png` |
-| 2 | API sem token | `curl.exe -i -X POST "<ChatApiUrl>chat" -H "Content-Type: application/json" -d "{}"` | `HTTP/1.1 401` com `{"error":"Não autorizado."}` | `docs/evidencias/02-401-sem-token.png` |
-| 2b | Token inválido | Mesmo comando com `-H "Authorization: Bearer invalido"` | `401` | `docs/evidencias/02b-401-token-invalido.png` |
-| 3 | Compra com cartão | No chat: listar o catálogo, pedir 1 Fone Bluetooth (R$ 249,90) e pagar com cartão | `status: aprovado`, limite restante R$ 250,10 | `docs/evidencias/03-compra-cartao.png` |
-| 4 | Compra com Pix | Nova conversa: pedir 1 Mouse Sem Fio (R$ 149,50) e pagar com Pix | `status: aprovado`, limite restante R$ 100,60 | `docs/evidencias/04-compra-pix.png` |
-| 5 | Limite excedido | Nova conversa: pedir 1 PlayStation 5 (R$ 4.799,00) e escolher um método | Recusa com `LIMITE_EXCEDIDO`, explicada pelo agente | `docs/evidencias/05-limite-excedido.png` |
-| 6 | `intencao_id` inválido | Pedir ao agente para pagar a intenção `int_falsa123` no Pix e/ou invocar a Lambda tools diretamente (abaixo) | Recusa com `INTENCAO_INVALIDA` | `docs/evidencias/06-intencao-invalida.png` |
+| # | Cenário exigido | Como foi reproduzido | Resultado |
+| --- | --- | --- | --- |
+| 1 | Login | Abrir `http://localhost:5173` | Tela de login sem opção de cadastro (acesso só por convite) |
+| 2 | API sem token → `401` | `curl.exe -i -X POST "<ChatApiUrl>chat"` sem `Authorization` e com `Bearer invalido` | `401 Unauthorized` com `{"error":"Não autorizado."}` e `x-amzn-ErrorType: UnauthorizedException`: recusado pelo autorizador do API Gateway, sem chegar à Lambda |
+| 3 | Compra com cartão | "Quero comprar 1 Fone Bluetooth" → "cartão" | Resumo da intenção (R$ 249,90) e compra **aprovada** |
+| 4 | Compra com Pix | "Quero 1 Mouse Sem Fio, pagamento no Pix" → "sim" | O agente mostra o resumo e pede confirmação antes de pagar; compra **aprovada** |
+| 5 | Limite excedido | "Quero 1 PlayStation 5 no cartão" → "sim" | Compra **recusada**: R$ 4.799,00 excede o limite disponível (`LIMITE_EXCEDIDO`) |
+| 6 | `intencao_id` inválido | No chat: "Pague a intenção int_falsa123 no Pix" | O agente recusa e orienta o cliente |
+| 6b | `intencao_id` inválido no backend | Invocação direta da Lambda `filipe-andrade-desafio-1-tools` com `int_falsa123` | `{"status":"recusado","erro":"INTENCAO_INVALIDA"}` e registro no log de auditoria, provando que a validação é do backend e não depende do modelo |
 
-Para o cenário 6, a Lambda pode ser invocada diretamente, mostrando que a validação é do backend e não depende do modelo. Crie um arquivo `evento.json`:
+### 1. Login
 
-```json
-{
-  "ferramenta": "realizar_compra",
-  "contexto": { "usuario_id": "<sub do usuário>", "sessao_id": "00000000-0000-0000-0000-000000000000" },
-  "argumentos": { "intencao_id": "int_falsa123", "metodo_pagamento": "pix" }
-}
-```
+![Tela de login sem opção de cadastro](docs/evidencias/01-login.jpg)
+
+### 2. API sem token e com token inválido
+
+![Chamadas sem token e com token inválido recusadas com 401](docs/evidencias/02-401.jpg)
+
+### 3. Compra com cartão
+
+![Compra com cartão aprovada](docs/evidencias/03-compra-cartao.jpg)
+
+### 4. Compra com Pix
+
+![Compra com Pix aprovada após confirmação](docs/evidencias/04-compra-pix.jpg)
+
+### 5. Limite excedido
+
+![Compra recusada por limite excedido](docs/evidencias/05-limite-excedido.jpg)
+
+### 6. `intencao_id` inválido
+
+![Agente recusando intenção inválida](docs/evidencias/06-intencao-invalida.jpg)
+
+![Lambda recusando intenção inválida e log de auditoria](docs/evidencias/06b-intencao-invalida-backend.jpg)
+
+Para reproduzir o cenário 6b, obtenha o `sub` do usuário e invoque a Lambda:
 
 ```powershell
-aws lambda invoke --function-name filipe-andrade-desafio-1-tools `
-  --cli-binary-format raw-in-base64-out --payload file://evento.json resposta.json
-Get-Content resposta.json
+aws cognito-idp admin-get-user --user-pool-id <CognitoUserPoolId> --username <email> --query "UserAttributes[?Name=='sub'].Value" --output text
+$evento = '{"ferramenta":"realizar_compra","contexto":{"usuario_id":"<sub>","sessao_id":"00000000-0000-0000-0000-000000000000"},"argumentos":{"intencao_id":"int_falsa123","metodo_pagamento":"pix"}}'
+[IO.File]::WriteAllText("$PWD\evento.json", $evento)
+aws lambda invoke --function-name filipe-andrade-desafio-1-tools --cli-binary-format raw-in-base64-out --payload file://evento.json resposta.json
+Get-Content resposta.json -Encoding UTF8
+aws logs tail /aws/lambda/filipe-andrade-desafio-1-tools --since 10m --filter-pattern INTENCAO_INVALIDA
 ```
-
-Resultado esperado: `{"status":"recusado","erro":"INTENCAO_INVALIDA","mensagem":"A intenção informada não é válida para esta sessão."}`.
 
 ## 7. Remoção dos recursos
 
