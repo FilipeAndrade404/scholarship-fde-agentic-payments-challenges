@@ -7,13 +7,15 @@
   },
   "scripts": {
     "setup": "npm ci && npm --prefix ../tools ci && npm --prefix ../api ci",
-    "build":"tsc --noEmit && npm run build:tools && npm run build:agent && npm run build:chat && npm run build:frontend",
+    "build":"tsc --noEmit && npm run build:tools && npm run build:agent && npm run build:chat",
     "build:frontend": "npm --prefix ../frontend ci && npm --prefix ../frontend run build",
     "build:tools": "npm --prefix ../tools run build && esbuild ../tools/src/handler.ts --bundle --platform=node --target=node24 --outfile=dist/payment-tools/index.js",
     "build:agent": "uv run --no-project --python 3.13 python ../agent/build.py",
     "build:chat": "npm --prefix ../api run build && esbuild ../api/src/handler.ts --bundle --platform=node --target=node24 --outfile=dist/chat/index.js && esbuild ../api/src/cognito.ts --bundle --platform=node --target=node24 --outfile=dist/initialize-user/index.js",
     "synth": "npm run build && cdk synth",
-    "deploy": "npm run setup && npm run build && cdk deploy --require-approval never"
+    "deploy": "npm run setup && npm run build && cdk deploy --require-approval never --outputs-file cdk-outputs.json && npm run frontend:config",
+    "deploy:frontend-aws": "npm run setup && npm run build && npm run build:frontend && cdk deploy -c frontendHosting=true --require-approval never --outputs-file cdk-outputs.json",
+    "frontend:config": "node scripts/frontend-config.mjs"
   },
   "dependencies": {
     "aws-cdk-lib": "2.276.0",

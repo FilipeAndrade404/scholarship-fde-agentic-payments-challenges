@@ -10,3 +10,5 @@ cdk.out/
 __pycache__/
 .venv/
 test-results/
+infra/cdk-outputs.json
+frontend/public/config.json

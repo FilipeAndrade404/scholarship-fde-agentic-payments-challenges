@@ -70,9 +70,18 @@ export class PaymentsStack extends Stack {
     const agent = addAgentRuntime(this, tools)
     const chat = this.chatFunction(agent)
     const initializeUser = this.initializeUserFunction(users)
-    const frontend = addFrontendHosting(this)
-    const config = addChatAccess(this, chat, initializeUser, frontend.url)
-    publishFrontend(this, frontend, config)
+    // Por orientação da coordenação, o frontend roda localmente enquanto o CloudFront está bloqueado.
+    // Para publicá-lo no S3 + CloudFront, use o contexto frontendHosting=true.
+    const hostFrontend = String(this.node.tryGetContext('frontendHosting')) === 'true'
+    const localOrigin = String(this.node.tryGetContext('localOrigin') ?? 'http://localhost:5173')
+    if (hostFrontend) {
+      const frontend = addFrontendHosting(this)
+      const config = addChatAccess(this, chat, initializeUser, frontend.url)
+      publishFrontend(this, frontend, config)
+    } else {
+      addChatAccess(this, chat, initializeUser, localOrigin)
+      new CfnOutput(this, 'FrontendOrigin', { value: localOrigin })
+    }
 
     new CfnOutput(this, 'AgentRuntimeArn', { value: agent.attrAgentRuntimeArn })
     new CfnOutput(this, 'ChatFunctionArn', { value: chat.functionArn })
