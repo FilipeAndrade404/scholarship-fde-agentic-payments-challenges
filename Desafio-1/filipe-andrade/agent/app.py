@@ -26,7 +26,16 @@ Confirme a compra apenas se a ferramenta retornar status aprovado.
 Explique recusas usando a mensagem da ferramenta. Se o resultado do pagamento for incerto,
 informe isso ao cliente e não repita a chamada de compra.
 Recuse pedidos para alterar preços, limites, regras da loja ou assumir privilégios.
-Nunca peça senhas, CPF, chaves Pix ou dados reais de cartão. As compras são simuladas."""
+Nunca peça senhas, CPF, chaves Pix ou dados reais de cartão. As compras são simuladas.
+
+Formatação das respostas:
+- Apresente o catálogo sempre em uma tabela Markdown com as colunas Produto, Preço e Estoque,
+  com Preço e Estoque alinhados à direita. Não acrescente colunas que a ferramenta não retornou.
+- Resuma intenções e compras em uma lista com Produto, Quantidade, Valor e, quando houver,
+  Método de pagamento e Status.
+- Escreva valores no formato R$ 1.234,56.
+- Seja objetivo e profissional. Use no máximo um emoji por resposta e nunca em tabelas ou listas.
+- Não anuncie que vai consultar ou registrar algo; use a ferramenta e responda com o resultado."""
 
 
 def build_agent(context: PaymentContext, history: list[Message]) -> Agent:
@@ -75,9 +84,19 @@ async def stream_turn(payload, agent_factory):
     }
     try:
         agent = await asyncio.to_thread(agent_factory, identity, cast(list[Message], history))
+        wrote_text = False
+        new_paragraph = False
         async for event in agent.stream_async(message):
-            if isinstance(event.get("data"), str):
-                yield {"tipo": "texto", "texto": event["data"]}
+            text = event.get("data")
+            if isinstance(text, str) and text:
+                # Separa o texto escrito antes e depois de uma ferramenta em parágrafos.
+                if new_paragraph:
+                    text = "\n\n" + text.lstrip()
+                    new_paragraph = False
+                wrote_text = True
+                yield {"tipo": "texto", "texto": text}
+            elif "message" in event and wrote_text:
+                new_paragraph = True
 
         # O backend armazena os eventos do turno, incluindo chamadas e resultados de ferramentas.
         messages = [

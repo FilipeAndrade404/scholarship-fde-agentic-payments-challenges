@@ -150,3 +150,36 @@ class AgentTest(unittest.IsolatedAsyncioTestCase):
         result = [event async for event in stream_turn({"mensagem": "Olá"}, factory)]
         self.assertEqual(result, [{"tipo": "erro", "mensagem": "Contexto autenticado inválido."}])
         factory.assert_not_called()
+
+    async def test_text_before_and_after_tool_is_split_into_paragraphs(self):
+        self.model = TextThenToolModel([
+            ("Vou consultar o catálogo.", ("listar_catalogo", "call-1", {})),
+            "Aqui está o catálogo.",
+        ])
+        self.client.invoke.return_value = self.reply({"produtos": []})
+
+        events = await self.turn("Quais produtos vocês têm?")
+
+        texts = [event["texto"] for event in events if event["tipo"] == "texto"]
+        self.assertEqual(texts, ["Vou consultar o catálogo.", "\n\nAqui está o catálogo."])
+        self.assertEqual("".join(texts), "Vou consultar o catálogo.\n\nAqui está o catálogo.")
+
+
+class TextThenToolModel(LocalModel):
+    """Simula o modelo escrevendo um texto e chamando uma ferramenta na mesma mensagem."""
+
+    async def stream(self, messages, tool_specs=None, system_prompt=None, **kwargs):
+        response = self.responses.__next__()
+        if isinstance(response, str):
+            self.responses = iter([response, *self.responses])
+            async for event in super().stream(messages, tool_specs, system_prompt, **kwargs):
+                yield event
+            return
+        text, (name, call_id, arguments) = response
+        yield {"messageStart": {"role": "assistant"}}
+        yield {"contentBlockDelta": {"delta": {"text": text}}}
+        yield {"contentBlockStop": {}}
+        yield {"contentBlockStart": {"start": {"toolUse": {"name": name, "toolUseId": call_id}}}}
+        yield {"contentBlockDelta": {"delta": {"toolUse": {"input": json.dumps(arguments)}}}}
+        yield {"contentBlockStop": {}}
+        yield {"messageStop": {"stopReason": "tool_use"}}
