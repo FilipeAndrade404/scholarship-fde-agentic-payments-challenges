@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "build": "vite build",
-    "dev": "vite",
+    "dev": "vite --host localhost --port 5173 --strictPort",
     "test:e2e": "playwright test"
   },
   "type": "module",
