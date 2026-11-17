@@ -2,13 +2,16 @@
 
 Desafio 1 da Sprint 2 (Pagamentos Agênticos). O chatbot da Fase 1 ([projeto original](https://github.com/RickyM7/Ollama-Chat-MCP-Payments/tree/3d09a7005722e30956f2799e1f3f10d89246ebf4)) agora roda na AWS: o login usa Amazon Cognito, o modelo do Ollama foi trocado pelo Claude Haiku 4.5 no Amazon Bedrock, o agente Strands roda no Bedrock AgentCore Runtime e toda a infraestrutura é definida em AWS CDK. As regras de negócio da Fase 1 (catálogo, intenção de compra, cartão ou Pix, limite por usuário e validação da intenção) foram mantidas.
 
+> **Situação atual: backend na AWS, frontend local.** Uma SCP da organização bloqueia a criação do Origin Access Control do CloudFront (`cloudfront:CreateOriginAccessControl`). Por orientação da coordenação, enquanto o bloqueio é resolvido, **o backend e a autenticação ficam na AWS** (Cognito, API Gateway com autorizador, Lambdas, AgentCore, Bedrock e DynamoDB) e **o frontend roda localmente** em `http://localhost:5173`. O código de hospedagem no S3 + CloudFront continua no projeto e é ativado com um comando (seção [2.8](#28-publicar-o-frontend-na-aws-quando-liberado)).
+
 | Item | Valor |
 | --- | --- |
 | Stack | `filipe-andrade-desafio-1` |
 | Região | `us-east-1` (todos os recursos) |
 | Modelo | Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) |
 | IaC | AWS CDK (TypeScript) em `infra/` |
-| Deploy | `npm run deploy` dentro de `infra/` |
+| Deploy do backend | `npm run deploy` dentro de `infra/` |
+| Frontend | Local, `npm run dev` dentro de `frontend/` → `http://localhost:5173` |
 
 ## Sumário
 
@@ -26,11 +29,9 @@ Desafio 1 da Sprint 2 (Pagamentos Agênticos). O chatbot da Fase 1 ([projeto ori
 
 ```mermaid
 flowchart TB
-    user([Usuário no navegador])
-
-    subgraph fe[Frontend]
-        cf[CloudFront<br/>HTTPS]
-        s3[(S3 privado<br/>index.html, assets, config.json)]
+    subgraph local[Computador do usuário]
+        user([Navegador])
+        vite[Frontend React + Vite<br/>localhost:5173<br/>config.json gerado no deploy]
     end
 
     cognito[Cognito User Pool<br/>somente convite]
@@ -56,13 +57,12 @@ flowchart TB
         transacoes[(transacoes)]
     end
 
-    user -- HTTPS --> cf
-    cf -- OAC --> s3
-    user -- login SRP --> cognito
+    user --> vite
+    vite -- login SRP --> cognito
     cognito -- primeiro token --> trigger
     trigger --> usuarios
-    user -- "POST /chat e GET /conversas<br/>Authorization: Bearer ID token" --> apigw
-    apigw -- 401 sem token válido --> user
+    vite -- "POST /chat e GET /conversas<br/>Authorization: Bearer ID token<br/>CORS: só localhost:5173" --> apigw
+    apigw -- 401 sem token válido --> vite
     apigw -- streaming --> chat
     chat --> conversas
     chat -- "InvokeAgentRuntime<br/>(mensagem, histórico, contexto)" --> runtime
@@ -76,7 +76,7 @@ flowchart TB
 
 ### Fluxo de uma mensagem
 
-1. O frontend (React + Vite, estático) é servido pelo CloudFront a partir de um bucket S3 privado, acessível apenas pela distribuição via Origin Access Control (OAC). A configuração (`config.json`, com URL da API e IDs do Cognito) é gerada pelo CDK no deploy.
+1. O frontend (React + Vite) roda no computador do usuário em `http://localhost:5173`. A configuração (`config.json`, com a URL da API e os IDs do Cognito) é gerada automaticamente ao final do deploy a partir dos outputs da stack; nada fica fixo no código.
 2. O login usa o componente `Authenticator` do Amplify UI, com `hideSignUp`. O user pool só aceita usuários criados por administrador.
 3. O frontend envia `POST /chat` com `Authorization: Bearer <ID token>`. O autorizador Cognito do API Gateway valida o token, inclusive a audiência do app client, e devolve `401` sem chegar à Lambda quando o token está ausente, expirado ou inválido.
 4. A Lambda do chat obtém o `usuario_id` do claim `sub` do token, reserva a conversa no DynamoDB, carrega o histórico completo e invoca o AgentCore Runtime.
@@ -87,6 +87,7 @@ flowchart TB
 
 | Decisão | Motivo |
 | --- | --- |
+| **Frontend local** em vez de S3 + CloudFront (temporário) | Uma SCP da organização (`p-cwpx03lm`) nega `cloudfront:CreateOriginAccessControl` na conta. A coordenação orientou publicar só o backend e a autenticação e rodar o frontend localmente. O CORS da API aceita apenas `http://localhost:5173`, e a autenticação continua obrigatória em todos os endpoints. A hospedagem com OAC permanece no código (`infra/frontend-hosting.ts`) e é ativada com `npm run deploy:frontend-aws`. |
 | API Gateway **REST** em vez de HTTP API | O enunciado exige streaming ou WebSocket. A HTTP API não oferece streaming de resposta; a REST API oferece integração Lambda em modo `STREAM`, com limite de integração de até 15 minutos. O autorizador continua sendo o JWT do Cognito. [Documentação](https://docs.aws.amazon.com/apigateway/latest/developerguide/response-transfer-mode.html) |
 | Uma única Lambda para as três ferramentas | Opção aceita pelo enunciado ("uma por tool, ou uma com roteamento interno"). A função recebe `ferramenta`, `contexto` e `argumentos`. |
 | Lambda `inicializa-usuario` (gatilho *pre token generation* do Cognito) | Cria o registro do usuário na tabela `usuarios` com limite inicial de R$ 500 no primeiro login. A escrita é condicional e preserva o saldo nos logins seguintes. |
@@ -137,7 +138,7 @@ npm ci
 npx cdk bootstrap aws://<ID_DA_CONTA>/us-east-1
 ```
 
-### 2.4 Deploy (comando único)
+### 2.4 Deploy do backend (comando único)
 
 ```powershell
 cd Desafio-1\filipe-andrade\infra
@@ -149,18 +150,18 @@ Esse comando:
 1. instala as dependências de `infra`, `tools` e `api` (`npm ci`);
 2. valida o TypeScript e empacota as Lambdas com esbuild;
 3. gera o pacote do agente (`agent/dist/agent.zip`) para Linux ARM64 com as dependências fixadas em `agent/uv.lock`;
-4. instala e compila o frontend;
-5. publica a stack com `cdk deploy`, incluindo o upload do frontend, a geração do `config.json` e a invalidação do cache do CloudFront.
+4. publica a stack com `cdk deploy`: Cognito, API Gateway, Lambdas, AgentCore Runtime e tabelas do DynamoDB;
+5. grava os outputs em `infra/cdk-outputs.json` e gera `frontend/public/config.json` para o frontend local (`npm run frontend:config`).
 
-O deploy não pede confirmação (`--require-approval never`). Para revisar as mudanças antes, rode `npx cdk diff`. Se o PowerShell bloquear o `npm` por *execution policy*, use `npm.cmd` e `npx.cmd`.
+O primeiro deploy leva cerca de 5 a 10 minutos. Ele não pede confirmação (`--require-approval never`); para revisar as mudanças antes, rode `npx cdk diff`. Se o PowerShell bloquear o `npm` por *execution policy*, use `npm.cmd` e `npx.cmd`.
 
 Ao final, a stack exibe os outputs:
 
 | Output | Uso |
 | --- | --- |
-| `FrontendUrl` | Endereço do chat (`https://<id>.cloudfront.net`) |
 | `ChatApiUrl` | URL base da API |
-| `CognitoUserPoolId` / `CognitoUserPoolClientId` | Criação de usuários e testes |
+| `CognitoUserPoolId` / `CognitoUserPoolClientId` | Login no frontend e criação de usuários |
+| `FrontendOrigin` | Origem aceita pelo CORS (`http://localhost:5173`) |
 | `AgentRuntimeArn`, `ChatFunctionArn`, `PaymentToolsArn`, `UsersTableName` | Diagnóstico |
 
 ### 2.5 Criar usuários (somente por convite)
@@ -174,14 +175,71 @@ aws cognito-idp admin-create-user --user-pool-id <CognitoUserPoolId> --username 
 
 O Cognito envia um convite por e-mail com o usuário e uma senha temporária. No primeiro login, o usuário define uma nova senha. Cada usuário começa com limite simulado de R$ 500.
 
-### 2.6 Problemas conhecidos
+### 2.6 Rodar o frontend localmente
+
+O frontend roda no seu computador e conversa com o backend publicado na AWS. O login é feito no Cognito real e todas as chamadas à API levam o token.
+
+**Pré-requisitos:** o deploy do backend (passo 2.4) concluído, um usuário convidado (passo 2.5) e Node.js 24.
+
+**1. Confirme que a configuração foi gerada.** O `npm run deploy` cria `frontend/public/config.json` automaticamente, com este formato:
+
+```json
+{
+  "apiUrl": "https://<id>.execute-api.us-east-1.amazonaws.com/prod/",
+  "userPoolId": "us-east-1_XXXXXXXXX",
+  "userPoolClientId": "<id do app client>"
+}
+```
+
+Se o arquivo não existir (por exemplo, em outro computador ou depois de apagar a pasta), gere-o de novo a partir da stack já publicada, com o terminal autenticado (passo 2.2):
+
+```powershell
+cd Desafio-1\filipe-andrade\infra
+npm run frontend:config
+```
+
+O arquivo está no `.gitignore` e não vai para o repositório.
+
+**2. Instale as dependências e inicie o servidor local:**
+
+```powershell
+cd Desafio-1\filipe-andrade\frontend
+npm ci
+npm run dev
+```
+
+O terminal mostra `Local: http://localhost:5173/`. Deixe-o aberto enquanto usa o chat; `Ctrl+C` encerra o servidor.
+
+**3. Abra `http://localhost:5173` no navegador.** Use exatamente esse endereço: o CORS da API aceita somente essa origem, então `127.0.0.1:5173` ou outra porta são recusados.
+
+**4. Entre com o e-mail convidado** e a senha temporária recebida por e-mail. No primeiro acesso, o Cognito pede uma nova senha. Depois disso, o chat abre e já conversa com o agente na AWS.
+
+| O que você vê | Causa e solução |
+| --- | --- |
+| Tela "Não foi possível carregar a configuração do chat." | `frontend/public/config.json` ausente. Rode `npm run frontend:config` em `infra` e recarregue a página. |
+| `Port 5173 is already in use` | Outro programa usa a porta. Feche-o (ou o outro terminal com `npm run dev`) e rode de novo; a porta é fixa por causa do CORS. |
+| Erro de rede ou CORS no console do navegador | Endereço diferente de `http://localhost:5173`, ou `config.json` de um deploy antigo. Confira o endereço e gere a configuração de novo. |
+| `Incorrect username or password` | Senha temporária expirada ou digitada errada. Recrie o convite com `admin-create-user` e `--message-action RESEND`. |
+
+### 2.7 Problemas conhecidos no deploy
 
 | Sintoma | Causa e solução |
 | --- | --- |
-| `Unable to locate credentials` | Terminal sem `AWS_PROFILE`. Repita o passo 2.2. Não use `aws login`. |
+| `Unable to locate credentials` ou `Token has expired` | Terminal sem `AWS_PROFILE` ou sessão SSO expirada. Defina `$env:AWS_PROFILE = "desafio-1"` **antes** de `aws sso login`. Não use `aws login`. |
 | `SSM parameter /cdk-bootstrap/hnb659fds/version not found` | Bootstrap ausente em `us-east-1`. Repita o passo 2.3 com a região explícita. |
-| `AccessDenied` em `cloudfront:CreateOriginAccessControl` com *explicit deny in a service control policy* | Uma SCP da organização bloqueia a criação de OAC. Não é resolvível pela conta; é preciso pedir a liberação à coordenação. O rollback remove os recursos criados. |
+| `AccessDenied` em `cloudfront:CreateOriginAccessControl` com *explicit deny in a service control policy* | Só ocorre com `npm run deploy:frontend-aws`. A SCP da organização bloqueia a criação de OAC; use o deploy padrão (frontend local) até a liberação. |
 | O chat responde com erro na primeira mensagem | Acesso ao modelo não habilitado. Repita o teste no *playground* do Bedrock (passo 2.1). |
+
+### 2.8 Publicar o frontend na AWS (quando liberado)
+
+Quando a coordenação liberar o CloudFront, o mesmo projeto publica o frontend no S3 privado com CloudFront e OAC, gera o `config.json` no bucket e invalida o cache:
+
+```powershell
+cd Desafio-1\filipe-andrade\infra
+npm run deploy:frontend-aws
+```
+
+Nesse modo, o CORS da API passa a aceitar somente o domínio do CloudFront, e a stack ganha o output `FrontendUrl`.
 
 ## 3. Modelo do Bedrock
 
@@ -219,7 +277,7 @@ Se a mesma chamada chegar duas vezes, a segunda falha na condição da intençã
 
 ## 5. Permissões IAM
 
-Todas as políticas estão no código (`infra/`). Nenhuma role da aplicação usa `"Action": "*"`, `"Resource": "*"` ou políticas gerenciadas amplas. Os curingas existentes são restritos a recursos do projeto: objetos do bucket do frontend (`<bucket>/*`), *log streams* dos grupos de log de cada função (`<grupo>:log-stream:*`) e o prefixo do Runtime (`filipe_andrade_desafio_1_agent-*`), cujos sufixos são gerados pelos serviços.
+Todas as políticas estão no código (`infra/`). Nenhuma role da aplicação usa `"Action": "*"`, `"Resource": "*"` ou políticas gerenciadas amplas. Os curingas existentes são restritos a recursos do projeto: *log streams* dos grupos de log de cada função (`<grupo>:log-stream:*`), o prefixo do Runtime (`filipe_andrade_desafio_1_agent-*`), cujos sufixos são gerados pelos serviços, e, somente com o frontend publicado na AWS, os objetos do bucket do frontend (`<bucket>/*`).
 
 | Role | Pode | Não pode |
 | --- | --- | --- |
@@ -228,8 +286,8 @@ Todas as políticas estão no código (`infra/`). Nenhuma role da aplicação us
 | Lambda tools | `Scan` em `produtos`; `GetItem` em `produtos`, `usuarios` e `intencoes`; `PutItem` em `intencoes`; `UpdateItem` em `produtos`, `usuarios` e `intencoes` e `PutItem` em `transacoes` **somente dentro de transação** (`dynamodb:EnclosingOperation = TransactWriteItems`); logs no próprio grupo | `conversas`, Bedrock, qualquer outra ação |
 | Lambda `inicializa-usuario` | `PutItem` em `usuarios`; logs no próprio grupo | Demais tabelas |
 | Lambda de carga do catálogo | `PutItem` em `produtos`; logs no próprio grupo | Demais tabelas |
-| Lambda de publicação do frontend | Ler os dois ZIPs do deploy, gravar e remover objetos do bucket do frontend, invalidar somente a distribuição do projeto, logs no próprio grupo | Outros buckets e distribuições |
-| Bucket do frontend (política de bucket) | `s3:GetObject` somente pelo serviço CloudFront com `AWS:SourceArn` igual à distribuição do projeto; nega qualquer acesso sem HTTPS | Acesso público (Block Public Access ativo) e *website hosting* |
+| Lambda de publicação do frontend (só com `deploy:frontend-aws`) | Ler os dois ZIPs do deploy, gravar e remover objetos do bucket do frontend, invalidar somente a distribuição do projeto, logs no próprio grupo | Outros buckets e distribuições |
+| Bucket do frontend (só com `deploy:frontend-aws`) | `s3:GetObject` somente pelo serviço CloudFront com `AWS:SourceArn` igual à distribuição do projeto; nega qualquer acesso sem HTTPS | Acesso público (Block Public Access ativo) e *website hosting* |
 
 A role do AgentCore só pode ser assumida pelo serviço `bedrock-agentcore.amazonaws.com` com as condições `aws:SourceAccount` (a própria conta) e `aws:SourceArn` (Runtimes com o prefixo do projeto). Ela não inclui `logs:DescribeLogGroups`, que exigiria `Resource: "*"`.
 
@@ -241,7 +299,7 @@ A role `cdk-hnb659fds-cfn-exec-role`, criada pelo bootstrap do CDK, é usada pel
 
 | # | Cenário | Como reproduzir | Resultado esperado | Captura |
 | --- | --- | --- | --- | --- |
-| 1 | Login | Abrir o `FrontendUrl` e entrar com um usuário convidado | Tela de login sem opção de cadastro; chat acessível após o login | `docs/evidencias/01-login.png` |
+| 1 | Login | Abrir `http://localhost:5173` (passo 2.6) e entrar com um usuário convidado | Tela de login sem opção de cadastro; chat acessível após o login | `docs/evidencias/01-login.png` |
 | 2 | API sem token | `curl.exe -i -X POST "<ChatApiUrl>chat" -H "Content-Type: application/json" -d "{}"` | `HTTP/1.1 401` com `{"error":"Não autorizado."}` | `docs/evidencias/02-401-sem-token.png` |
 | 2b | Token inválido | Mesmo comando com `-H "Authorization: Bearer invalido"` | `401` | `docs/evidencias/02b-401-token-invalido.png` |
 | 3 | Compra com cartão | No chat: listar o catálogo, pedir 1 Fone Bluetooth (R$ 249,90) e pagar com cartão | `status: aprovado`, limite restante R$ 250,10 | `docs/evidencias/03-compra-cartao.png` |
@@ -276,14 +334,14 @@ cd Desafio-1\filipe-andrade\infra
 npx cdk destroy
 ```
 
-A stack remove automaticamente as tabelas, o user pool, as Lambdas e seus grupos de log, a API, o AgentCore Runtime, a distribuição do CloudFront e o bucket do frontend (os arquivos são apagados pelo próprio recurso de publicação antes da exclusão do bucket).
+A stack remove automaticamente as tabelas, o user pool, as Lambdas e seus grupos de log, a API e o AgentCore Runtime. Se o frontend tiver sido publicado na AWS, também remove a distribuição do CloudFront e o bucket (os arquivos são apagados pelo próprio recurso de publicação antes da exclusão do bucket). O frontend local não cria recursos na AWS; basta encerrar o `npm run dev` e, se quiser, apagar `frontend/public/config.json`.
 
 Depois, confira no console (`us-east-1`) e remova o que tiver ficado fora da stack:
 
 | Recurso | Por que fica | Como remover |
 | --- | --- | --- |
 | Grupos de log `/aws/bedrock-agentcore/runtimes/filipe_andrade_desafio_1_agent-*` | Criados pelo próprio AgentCore, fora do CloudFormation | CloudWatch → *Log groups* → excluir, ou `aws logs delete-log-group --log-group-name <nome>` |
-| Bucket do frontend (só se a remoção falhar) | Um bucket com objetos não é excluído | Esvaziar e excluir o bucket no console do S3 |
+| Bucket do frontend (só se publicado e a remoção falhar) | Um bucket com objetos não é excluído | Esvaziar e excluir o bucket no console do S3 |
 | Bootstrap do CDK (`CDKToolkit` e bucket `cdk-hnb659fds-assets-<conta>-us-east-1`) | Criado pelo `cdk bootstrap`, fora da stack | Se nenhuma outra stack CDK usar a conta: esvaziar o bucket de assets e excluir a stack `CDKToolkit` no CloudFormation |
 
 O agente é publicado como pacote ZIP (*direct code deploy*), então não há imagens no Amazon ECR.
@@ -294,11 +352,11 @@ O agente é publicado como pacote ZIP (*direct code deploy*), então não há im
 
 ```
 Desafio-1/filipe-andrade/
-├── frontend/   React + Vite, Amplify Authenticator, leitura do streaming
+├── frontend/   React + Vite, Amplify Authenticator, leitura do streaming (roda local)
 ├── api/        Lambda do chat (streaming, conversas) e Lambda inicializa-usuario
 ├── agent/      Agente Strands (app.py) e ferramentas que invocam a Lambda tools
 ├── tools/      Lambda das três ferramentas de pagamento
-└── infra/      Stack CDK
+└── infra/      Stack CDK e scripts/frontend-config.mjs (gera o config.json local)
 ```
 
 ### Contratos da API
