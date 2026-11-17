@@ -17,7 +17,7 @@ Desafio 1 da Sprint 2 (Pagamentos Agênticos). O chatbot da Fase 1 ([projeto ori
 
 A API, o Cognito e o agente estão publicados na AWS e permanecem no ar até a correção. Como o frontend roda localmente, siga estes passos (requer Node.js 24):
 
-1. Aceite o convite enviado pelo Cognito ao seu e-mail (assunto **"Convite para o chat de pagamentos"**, com o usuário e uma senha temporária).
+1. Aceite o convite enviado pelo Cognito ao seu e-mail (assunto **"Convite: Agente de Pagamentos na AWS - projeto de Filipe Andrade (Desafio 1, Sprint 2)"**, com o usuário e uma senha temporária). Se não encontrar, confira a caixa de spam.
 2. Clone a branch `fellow/filipe-andrade-desafio-1` e crie o arquivo `Desafio-1/filipe-andrade/frontend/public/config.json` com o conteúdo abaixo. São identificadores públicos do app client (sem segredo); o acesso continua restrito a usuários convidados.
 
    ```json
