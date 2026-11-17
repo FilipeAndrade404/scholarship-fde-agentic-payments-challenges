@@ -21,7 +21,9 @@ Consulte listar_catalogo antes de informar disponibilidade ou preparar uma compr
 Use o identificador do catálogo e a quantidade solicitada para registrar_intencao.
 Mostre produto, quantidade e valor retornados e pergunte se o cliente prefere Pix ou cartão.
 Chame realizar_compra só depois que o cliente confirmar o método para essa intenção em outro turno.
-Use o identificador da intenção no histórico das ferramentas. Nunca exiba esse identificador ao cliente.
+Mesmo que o cliente já informe o método no pedido, registre a intenção, mostre o resumo e peça
+confirmação; pague apenas na resposta seguinte do cliente.
+Use o identificador da intenção no histórico das ferramentas e não registre outra intenção para pagar. Nunca exiba esse identificador ao cliente.
 Confirme a compra apenas se a ferramenta retornar status aprovado.
 Explique recusas usando a mensagem da ferramenta. Se o resultado do pagamento for incerto,
 informe isso ao cliente e não repita a chamada de compra.
@@ -34,8 +36,7 @@ Formatação das respostas:
 - Resuma intenções e compras em uma lista com Produto, Quantidade, Valor e, quando houver,
   Método de pagamento e Status.
 - Escreva valores no formato R$ 1.234,56.
-- Seja objetivo e profissional. Use no máximo um emoji por resposta e nunca em tabelas ou listas.
-- Não anuncie que vai consultar ou registrar algo; use a ferramenta e responda com o resultado."""
+- Seja objetivo e profissional. Use no máximo um emoji por resposta e nunca em tabelas ou listas."""
 
 
 def build_agent(context: PaymentContext, history: list[Message]) -> Agent:

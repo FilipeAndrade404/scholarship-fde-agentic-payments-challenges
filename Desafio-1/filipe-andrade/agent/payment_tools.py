@@ -17,8 +17,22 @@ class PaymentContext(TypedDict):
 
 logger = logging.getLogger(__name__)
 
+CONFIRMATION_REQUIRED = {
+    "status": "recusado",
+    "erro": "CONFIRMACAO_PENDENTE",
+    "mensagem": (
+        "A intenção acabou de ser registrada e o cliente ainda não confirmou. "
+        "Nenhum pagamento foi feito. Mostre produto, quantidade, valor e método "
+        "e peça a confirmação do cliente antes de pagar."
+    ),
+}
+
 
 def payment_tools(client: "BaseClient", function_arn: str, context: PaymentContext):
+    # As ferramentas são criadas a cada turno. Uma intenção registrada no turno atual
+    # só pode ser paga depois que o cliente confirmar, em um turno seguinte.
+    intents_this_turn: set[str] = set()
+
     async def invoke(name: str, arguments: dict) -> dict:
         def request():
             response = client.invoke(
@@ -64,9 +78,12 @@ def payment_tools(client: "BaseClient", function_arn: str, context: PaymentConte
             produto_id: Identificador retornado pelo catálogo.
             quantidade: Quantidade inteira maior que zero.
         """
-        return await invoke(
+        result = await invoke(
             "registrar_intencao", {"produto_id": produto_id, "quantidade": quantidade}
         )
+        if isinstance(result.get("intencao_id"), str):
+            intents_this_turn.add(result["intencao_id"])
+        return result
 
     @tool
     async def realizar_compra(
@@ -78,6 +95,9 @@ def payment_tools(client: "BaseClient", function_arn: str, context: PaymentConte
             intencao_id: Identificador retornado pela ferramenta registrar_intencao.
             metodo_pagamento: Método escolhido pelo usuário, cartao ou pix.
         """
+        if intencao_id in intents_this_turn:
+            logger.info("Pagamento aguardando a confirmação do cliente.")
+            return CONFIRMATION_REQUIRED
         return await invoke(
             "realizar_compra",
             {"intencao_id": intencao_id, "metodo_pagamento": metodo_pagamento},

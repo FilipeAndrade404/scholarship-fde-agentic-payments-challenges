@@ -384,6 +384,7 @@ Os contratos de argumentos, retornos e códigos de erro são os da Fase 1 (`INTE
 | Valor vem da intenção registrada | `realizar_compra` não recebe valor; usa `valor_centavos` salvo em `intencoes`, calculado pelo backend a partir do catálogo. |
 | Só intenções criadas pelo backend, do usuário e não pagas | A intenção precisa existir na tabela, pertencer ao mesmo usuário e à mesma sessão, estar `pendente` e dentro da validade. |
 | Sem duplicidade | Transação condicional descrita na seção 4. |
+| Pagamento só depois da confirmação do cliente | O agente não paga uma intenção registrada no mesmo turno, mesmo que o cliente já tenha dito o método no pedido: antes de chamar a Lambda, `agent/payment_tools.py` devolve ao modelo `CONFIRMACAO_PENDENTE`, e ele mostra o resumo e pede confirmação. O pagamento acontece na resposta seguinte do cliente, como no fluxo da Fase 1. A trava fica no agente; os contratos da Lambda das ferramentas não mudam. |
 | Erros compreensíveis | As ferramentas retornam `status: recusado` com uma mensagem legível; falhas de infraestrutura chegam ao usuário como mensagens genéricas, sem stack traces. |
 
 ## 9. Testes locais

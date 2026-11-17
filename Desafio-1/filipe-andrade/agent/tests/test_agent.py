@@ -164,6 +164,31 @@ class AgentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(texts, ["Vou consultar o catálogo.", "\n\nAqui está o catálogo."])
         self.assertEqual("".join(texts), "Vou consultar o catálogo.\n\nAqui está o catálogo.")
 
+    async def test_purchase_in_same_turn_as_intent_waits_for_confirmation(self):
+        self.model = LocalModel([
+            ("registrar_intencao", "intent-1", {"produto_id": "prod_006", "quantidade": 1}),
+            ("realizar_compra", "purchase-1", {"intencao_id": "int_123", "metodo_pagamento": "pix"}),
+            "Mouse Sem Fio por R$ 149,50 no Pix. Confirma a compra?",
+        ])
+        self.client.invoke.return_value = self.reply({"intencao_id": "int_123", "status": "pendente"})
+
+        events = await self.turn("Quero 1 Mouse Sem Fio, pagamento no Pix.")
+
+        # Só registrar_intencao chegou à Lambda; o pagamento ficou para o próximo turno.
+        self.assertEqual(self.client.invoke.call_count, 1)
+        self.assert_lambda_call("registrar_intencao", {"produto_id": "prod_006", "quantidade": 1})
+        self.assertIn("CONFIRMACAO_PENDENTE", json.dumps(events[-1]["mensagens"]))
+
+        self.model = LocalModel([
+            ("realizar_compra", "purchase-2", {"intencao_id": "int_123", "metodo_pagamento": "pix"}),
+            "Compra aprovada.",
+        ])
+        self.client.invoke.return_value = self.reply({"status": "aprovado", "intencao_id": "int_123"})
+        await self.turn("Sim, pode pagar.", events[-1]["mensagens"])
+
+        self.assertEqual(self.client.invoke.call_count, 2)
+        self.assert_lambda_call("realizar_compra", {"intencao_id": "int_123", "metodo_pagamento": "pix"})
+
 
 class TextThenToolModel(LocalModel):
     """Simula o modelo escrevendo um texto e chamando uma ferramenta na mesma mensagem."""
