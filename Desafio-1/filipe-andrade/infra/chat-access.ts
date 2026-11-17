@@ -22,8 +22,18 @@ export function addChatAccess(stack: Stack, chat: Function, initializeUser: Func
     autoVerify: { email: true },
     standardAttributes: { email: { required: true } },
     userInvitation: {
-      emailSubject: 'Convite para o chat de pagamentos',
-      emailBody: 'Seu usuário é {username}. Sua senha temporária é {####}. Altere a senha no primeiro acesso.',
+      emailSubject: 'Convite: Agente de Pagamentos na AWS - projeto de Filipe Andrade (Desafio 1, Sprint 2)',
+      emailBody: [
+        'Olá!',
+        'Este convite dá acesso ao <b>Agente de Pagamentos na AWS</b>, projeto de <b>Filipe Andrade</b>'
+          + ' no Desafio 1 da Sprint 2 (Pagamentos Agênticos). Ele vale somente para este projeto.',
+        'Usuário: <b>{username}</b><br>Senha temporária: <b>{####}</b>',
+        'O frontend roda localmente. As instruções estão na seção "Para o corretor" do README:<br>'
+          + 'https://github.com/FilipeAndrade404/scholarship-fde-agentic-payments-challenges/tree/'
+          + 'fellow/filipe-andrade-desafio-1/Desafio-1/filipe-andrade#para-o-corretor',
+        'Depois de iniciar o frontend, acesse http://localhost:5173, entre com o usuário e a senha'
+          + ' temporária acima e defina uma nova senha no primeiro acesso.',
+      ].join('<br><br>'),
     },
     accountRecovery: AccountRecovery.EMAIL_ONLY,
     featurePlan: FeaturePlan.LITE,
